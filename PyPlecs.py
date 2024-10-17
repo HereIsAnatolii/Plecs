@@ -13,7 +13,8 @@ class PyPlecs():
         # assign to the class variables
         self.plecs = xml.Server(f'http://localhost:{kwargs["localhost"]}/RPC2').plecs
         self.plecs_path = f'C://Users//{kwargs["user"]}//Documents//Plexim//PLECS {kwargs["version"]} (64 bit)//plecs.exe'
-        self.model = kwargs['path']+f"//{model}"
+#        self.model = kwargs['path']+f"//{model}"
+        self.model = model
         self.SimTime = kwargs['SimTime']
         self.params = {}
         self.df = pd.DataFrame()
@@ -48,7 +49,7 @@ class PyPlecs():
         # increase the number of loops
         if kwargs['mul'] != 1:
             # make a list of strings like 1*1e-6 for a better readability
-            self.param2loop[param] = [f"{val}*{mul}" for val in np.linspace(kwargs['start'],kwargs['stop'],kwargs['steps'])]
+            self.param2loop[param] = [f"{val}*{kwargs['mul']}" for val in np.linspace(kwargs['start'],kwargs['stop'],kwargs['steps'])]
         else:
             self.param2loop[param] = np.linspace(kwargs['start'],kwargs['stop'],kwargs['steps'])
     def reset_params(self):
@@ -69,6 +70,10 @@ class PyPlecs():
         self.SimTime = kwargs['SimTime']
         self.plecs.set(self.model,'TimeSpan',f'{self.SimTime}')
         self.means = pd.DataFrame()
+        
+        # check in the current time
+        timenow = datetime.datetime.now().strftime("%m.%d-%H.%M")
+        
         # update the parameters
         param_names = []
         for key,values in self.param2loop.items():
@@ -77,7 +82,12 @@ class PyPlecs():
         if len(param_names) > 0:
             # run actual loop
             for i,val1 in enumerate(self.param2loop[param_names[0]]):
-                print(f'Cycle {i}, {param_names[0]} = {val1:.3f} ')
+                if isinstance(val1,str):
+                    isString = True
+                    print(f'Cycle {i}, {param_names[0]} = {float(val1.split("*")[0]):.3f} ')
+                else:
+                    isString = False
+                    print(f'Cycle {i}, {param_names[0]} = {val1:.3f} ')
                 params[param_names[0]] = val1
                 # run sub-loop if more than 1 loop parameters given
                 # later - save csv and svg and plot
@@ -97,7 +107,11 @@ class PyPlecs():
                     results = self.plecs.simulate(self.model)
                     if 'names' in kwargs:
                         self.df['t'] = results['Time']
-                        self.means.loc[i,param_names[0]] = round(val1,3)
+                        # put the value as float inside the table
+                        if isString:
+                            self.means.loc[i,param_names[0]] = float(val1.split('*')[0])
+                        else:
+                            self.means.loc[i,param_names[0]] = val1
                         for k, name in enumerate(kwargs['names']):
                             self.df[name] = results['Values'][k]
                             msk = self.df['t'] > (self.df['t'].values[-1]-kwargs['period']) if 'period' in kwargs else self.df['t'] > 0
@@ -108,14 +122,25 @@ class PyPlecs():
                             self.means.loc[i,name+' mean'] = mean
                             self.means.loc[i,name+' rms'] = rms
                             self.means.loc[i,name+' max'] = maxx
+                            self.means.loc[i,name+' last'] = self.df[name].values[-1]
                     else:
                         for i in range(kwargs['Nouts']):
                             self.df[f'Res {i}'] = results['Values'][i]
-                    self.df.to_csv(f"{self.model}-{param_names[0]}-{val1:.3f}.csv",index=False)
+                    
+                    self.means[param_names[0]] = self.means[param_names[0]].astype('float')
+                    if isString==False:
+                        self.df.to_csv(f"{timenow}-{self.model}-{param_names[0]}-{val1:.3f}.csv",index=False)
+                    else:
+                        self.df.to_csv(f"{timenow}-{self.model}-{param_names[0]}-{float(val1.split('*')[0]):.3f}.csv",index=False)
                     self.df = pd.DataFrame()
                     # 1. save all subsims to csv + svg
                     # 2. find min,max, mean and rms of each result
                     # 3. save only the last values
+                
+            if isString:
+                self.means.to_csv(f"{timenow}-{self.model}-means-{param_names[0]}={float(self.param2loop[param_names[0]][0].split('*')[0]):.3f}--{float(self.param2loop[param_names[0]][-1].split('*')[0]):.3f}.csv",index=False)
+            else:
+                self.means.to_csv(f"{timenow}-{self.model}-means-{param_names[0]}={self.param2loop[param_names[0]][0]}--{self.param2loop[param_names[0]][-1]}.csv",index=False)
         else:
             # reset all the params and run a single simulation
             self.reset_params()
