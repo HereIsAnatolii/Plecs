@@ -7,7 +7,7 @@ class PyPlecs():
         import matplotlib.pyplot as plt
         
         # set default input parameters
-        defaultKwargs = { 'user': 'Anatolii', 'version': 4.8,'localhost':1080, 'path':'C://Anatolii//','SimTime':0.02 }
+        defaultKwargs = { 'user': 'TCA1RNG', 'version': 4.8,'localhost':1080, 'path':'C://Anatolii//EMY-050//TCM','SimTime':0.02 }
         kwargs = { **defaultKwargs, **kwargs }
         
         # assign to the class variables
@@ -247,3 +247,100 @@ class PyPlecs():
             else:
                 for i in range(kwargs['Nouts']):
                     self.df[f'Res {i}'] = results['Values'][i][-1] if kwargs['LastValue'] else results['Values'][i]
+                    
+    def SimOne(self,**kwargs):
+        ''' SimTime : float, period : float, outputs : [str], name : str, plot_first : int, scopes : [str], save_csv '''
+        # set default input parameters
+        defaultKwargs = { 'SimTime': self.SimTime, 'reset' : False, 'save_csv' : True}
+        kwargs = { **defaultKwargs, **kwargs }
+        
+        self.SimTime = kwargs['SimTime']
+        self.plecs.set(self.model,'TimeSpan',f'{self.SimTime}')
+        if kwargs['reset']:
+            self.means = pd.DataFrame()
+            self.simTotal = 0
+        # unpack the outputs
+        # make number of plots depending on the size
+        if 'outputs' in kwargs:
+            outputs = kwargs['outputs']
+            N_plots = len(outputs)
+            N_outputs = []
+            for i, value in enumerate(outputs):
+                if isinstance(value,list):
+                    # unpack the array and attach each value to the previous array
+                    for sub_value in value:
+                        N_outputs.append(sub_value)
+                else:
+                    # attache the value as it is to the previous array
+                    N_outputs.append(value)
+
+        # assign file name
+        self.name = kwargs['name'] if 'name' in kwargs else self.model
+        
+        # check in the current time
+        timenow = datetime.datetime.now().strftime("%m.%d-%H.%M")
+        
+        # reset all params before running the simulation
+        self.reset_params()
+        results = self.plecs.simulate(self.model)
+        
+        self.df['t'] = results['Time']
+        
+        # assign each individual name in the DF 
+        for k, name in enumerate(N_outputs):
+            self.df[name] = results['Values'][k]
+            msk = self.df['t'] > (self.df['t'].values[-1]-kwargs['period']) if 'period' in kwargs else self.df['t'] > 0
+
+            mean = (self.df.loc[msk,name].mean())
+            maxx = self.df.loc[msk,name].max()
+            rms = (self.df.loc[msk,name].pow(2).sum()/self.df[msk].shape[0])**0.5
+
+            self.means.loc[self.simTotal,name+' mean'] = mean
+            self.means.loc[self.simTotal,name+' rms'] = rms
+            self.means.loc[self.simTotal,name+' max'] = maxx
+            self.means.loc[self.simTotal,name+' last'] = self.df[name].values[-1]
+
+        # save a single simulation into csv
+        if kwargs['save_csv'] == True:
+            self.df[msk].to_csv(f"{timenow}-{self.name}.zip",index=False)
+
+        # if plot is not given, plot everything
+        if 'plot_first' in kwargs:
+            fig, p = plt.subplots(kwargs['plot_first'],sharex=True)
+            fig.set_figheight(kwargs['plot_first']*3)
+            
+            for k, name in enumerate(kwargs['outputs'][:kwargs['plot_first']]):
+                self.df[msk].plot(ax=p[k],x='t',y=name)
+                
+        else:
+            fig, p = plt.subplots(len(kwargs['outputs']),sharex=True)
+            fig.set_figheight(len(kwargs['outputs'])*3)
+
+            for k, name in enumerate(kwargs['outputs']):
+                self.df[msk].plot(ax=p[k],x='t',y=name)
+
+        fig.savefig(f"{timenow}-{self.name}.svg")
+        fig.savefig(f"{timenow}-{self.name}.png",dpi=500)
+        plt.clf() # do not show the plot
+    def SaveCSV(self,**kwargs):
+        ''' outputs : bool, means : bool, files : bool, timestamp : bool, name : str, period : float '''
+        msk = self.df['t'] > (self.df['t'].values[-1]-kwargs['period']) if 'period' in kwargs else self.df['t'] > 0
+        # set default input parameters
+        defaultKwargs = { 'outputs': True, 'means' : True, 'files' : True, 'timestamp' : True}
+        kwargs = { **defaultKwargs, **kwargs }
+        
+        if 'name' in kwargs:
+            self.name = kwargs['name'] 
+            
+        if kwargs['timestamp'] == True:
+            # check in the current time
+            timenow = datetime.datetime.now().strftime("%m.%d-%H.%M")
+            timenow += '-'
+        else:
+            timenow = ''
+        if kwargs['outputs'] == True:
+            self.df[msk].to_csv(f"{timenow}{self.name}.zip",index=False)
+        if kwargs['means'] == True:
+            self.means.to_csv(f"{timenow}{self.name}-means.csv",index=False)
+        if kwargs['means'] == True:
+            self.files.to_csv(f"{timenow}{self.name}-files.csv",index=False)
