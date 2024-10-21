@@ -1,6 +1,6 @@
 class PyPlecs():
     def __init__(self,model,**kwargs):
-        ''' model : str, user : str, version : float , localhost : int, path : str, SimTime : float'''
+        ''' model : str, user : str, version : float , localhost : int, path : str, SimTime : float, params'''
         import xmlrpc.client as xml
         import pandas as pd
         import numpy as np
@@ -29,6 +29,10 @@ class PyPlecs():
         self.loop = 0
         self.param2loop = dict()
         plt.style.use('bmh')
+        
+        # set params
+        if 'params' in kwargs:
+            self.add_params(params=kwargs['params'])
         
     def add_params(self,**kwargs):
         ''' params : list, values : list, csv : str, paradict : dictionary  '''
