@@ -7,7 +7,7 @@ class PyPlecs():
         import matplotlib.pyplot as plt
         
         # set default input parameters
-        defaultKwargs = { 'user': 'Anatolii', 'version': 4.8,'localhost':1080, 'path':'C://Anatolii//','SimTime':0.02 }
+        defaultKwargs = { 'user': 'TCA1RNG', 'version': 4.8,'localhost':1080, 'path':'C://Anatolii//EMY-050//TCM','SimTime':0.02 }
         kwargs = { **defaultKwargs, **kwargs }
         
         # assign to the class variables
@@ -77,7 +77,21 @@ class PyPlecs():
         if kwargs['reset']:
             self.means = pd.DataFrame()
             self.simTotal = 0
-        
+        # unpack the outputs
+        # make number of plots depending on the size
+        if 'outputs' in kwargs:
+            outputs = kwargs['outputs']
+            N_plots = len(outputs)
+            N_outputs = []
+            for i,value in enumerate(outputs):
+                if isinstance(value,list):
+                    # unpack the array and attach each value to the previous array
+                    for sub_value in value:
+                        N_outputs.append(sub_value)
+                else:
+                    # attache the value as it is to the previous array
+                    N_outputs.append(value)
+
         # assign file name
         self.name = kwargs['name'] if 'name' in kwargs else self.model
         
@@ -94,10 +108,10 @@ class PyPlecs():
             for i,val1 in enumerate(self.param2loop[param_names[0]]):
                 if isinstance(val1,str):
                     isString = True
-                    print(f'Cycle {i}, {param_names[0]} = {float(val1.split("*")[0]):.3f} ',end='; ')
+                    print(f'Cycle {i}, {param_names[0]} = {float(val1.split("*")[0]):.3f}',end='; ')
                 else:
                     isString = False
-                    print(f'Cycle {i}, {param_names[0]} = {val1:.3f} ',end='; ')
+                    print(f'Cycle {i}, {param_names[0]} = {val1:.3f}',end='; ')
                 params[param_names[0]] = val1
                 params['i'] = i
                 # run sub-loop if more than 1 loop parameters given
@@ -116,7 +130,7 @@ class PyPlecs():
                                 self.means.loc[i,param_names[0]] = float(val1.split('*')[0])
                             else:
                                 self.means.loc[i,param_names[0]] = val1
-                            for k, name in enumerate(kwargs['outputs']):
+                            for k, name in enumerate(N_outputs):
                                 self.df[name] = results['Values'][k]
                                 msk = self.df['t'] > (self.df['t'].values[-1]-kwargs['period']) if 'period' in kwargs else self.df['t'] > 0
                                 mean = (self.df.loc[msk,name].mean())
@@ -128,8 +142,8 @@ class PyPlecs():
                                 self.means.loc[i,name+' max'] = maxx
                                 self.means.loc[i,name+' last'] = self.df[name].values[-1]
                         else:
-                            for i in range(kwargs['Nouts']):
-                                self.df[f'Res {i}'] = results['Values'][i]
+                            for ii in range(kwargs['Nouts']):
+                                self.df[f'Res {ii}'] = results['Values'][ii]
                     
                     self.means[param_names[0]] = self.means[param_names[0]].astype('float')
                     if isString==False:
@@ -157,9 +171,10 @@ class PyPlecs():
                             self.means.loc[self.simTotal,param_names[0]] = float(val1.split('*')[0])
                         else:
                             self.means.loc[self.simTotal,param_names[0]] = val1
-                        for k, name in enumerate(kwargs['outputs']):
+                        for k, name in enumerate(N_outputs):
                             self.df[name] = results['Values'][k]
                             msk = self.df['t'] > (self.df['t'].values[-1]-kwargs['period']) if 'period' in kwargs else self.df['t'] > 0
+                            
                             mean = (self.df.loc[msk,name].mean())
                             maxx = self.df.loc[msk,name].max()
                             rms = (self.df.loc[msk,name].pow(2).sum()/self.df[msk].shape[0])**0.5
@@ -174,12 +189,35 @@ class PyPlecs():
                     
                     self.means[param_names[0]] = self.means[param_names[0]].astype('float') # error here
                     if isString==False:
+                        # save a single simulation into csv
                         self.df[msk].to_csv(f"{timenow}-{self.name}-{param_names[0]}-{val1:.3f}.zip",index=False)
+                        
+                        fig, p = plt.subplots(len(kwargs['outputs']),sharex=True)
+                        fig.set_figheight(len(kwargs['outputs'])*3)
+                        
+                        for k, name in enumerate(kwargs['outputs']):
+                            self.df[msk].plot(ax=p[k],x='t',y=name)
+                        
+                        fig.savefig(f"{timenow}-{self.name}-{param_names[0]}-{val1:.3f}.svg")
+                        fig.savefig(f"{timenow}-{self.name}-{param_names[0]}-{val1:.3f}.png",dpi=500)
+                        plt.clf() # do not show the plot
+                        
                         self.files.loc[self.simTotal,'File'] = f"{timenow}-{self.name}-{param_names[0]}-{val1:.3f}.zip"
                         self.files.loc[self.simTotal,'Date'] = f"{timenow.split('-')[0]}" # %m.%d-%H.%M
                         self.files.loc[self.simTotal,'Time'] = f"{timenow.split('-')[1]}" # %m.%d-%H.%M
                     else:
                         self.df[msk].to_csv(f"{timenow}-{self.name}-{param_names[0]}-{float(val1.split('*')[0]):.3f}.zip",index=False)
+                        
+                        fig, p = plt.subplots(len(kwargs['outputs']),sharex=True)
+                        fig.set_figheight(len(kwargs['outputs'])*3)
+                        for k, name in enumerate(kwargs['outputs']):
+                            self.df[msk].plot(ax=p[k],x='t',y=name)
+#                            p[k].text(self.df['t'].values[-1]*1.25, 0, f'RMS = {rms}\nMAX = {maxx}',ha='center', va='center', fontsize=12,bbox=dict(facecolor='white', edgecolor='black'))
+                            
+                        fig.savefig(f"{timenow}-{self.name}-{param_names[0]}-{float(val1.split('*')[0]):.3f}.svg")
+                        fig.savefig(f"{timenow}-{self.name}-{param_names[0]}-{float(val1.split('*')[0]):.3f}.png",dpi=500)
+                        plt.clf() # do not show the plot
+                        
                         self.files.loc[self.simTotal,'File'] = f"{timenow}-{self.name}-{param_names[0]}-{float(val1.split('*')[0]):.3f}.zip"
                         self.files.loc[self.simTotal,'Date'] = f"{timenow.split('-')[0]}" # %m.%d-%H.%M
                         self.files.loc[self.simTotal,'Time'] = f"{timenow.split('-')[1]}" # %m.%d-%H.%M
