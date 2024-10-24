@@ -71,9 +71,9 @@ class PyPlecs():
         self.plecs.set(self.model,'InitializationCommands',init)
         
     def simulate(self,**kwargs):
-        ''' SimTime : float, period : float, outputs : [str], name : str, Nouts : int, scopes : [str], LastValue : bool '''
+        ''' SimTime : float, period : float, outputs : [str], name : str, Nouts : int, scopes : [str], mean, max, rst, eval : ('name','eq') '''
         # set default input parameters
-        defaultKwargs = { 'SimTime': self.SimTime, 'Nouts' : 1, 'LastValue':False, 'reset' : False}
+        defaultKwargs = { 'SimTime': self.SimTime, 'Nouts' : 1, 'reset' : False, 'mean' : True, 'max' : True, 'rms' : True}
         kwargs = { **defaultKwargs, **kwargs }
         
         self.SimTime = kwargs['SimTime']
@@ -140,11 +140,15 @@ class PyPlecs():
                                 mean = (self.df.loc[msk,name].mean())
                                 maxx = self.df.loc[msk,name].max()
                                 rms = (self.df.loc[msk,name].pow(2).sum()/self.df[msk].shape[0])**0.5
-
-                                self.means.loc[i,name+' mean'] = mean
-                                self.means.loc[i,name+' rms'] = rms
-                                self.means.loc[i,name+' max'] = maxx
-                                self.means.loc[i,name+' last'] = self.df[name].values[-1]
+                                
+                                if kwargs.pop('mean') == True:
+                                    self.means.loc[i,name+'_mean'] = mean
+                                if kwargs.pop('rms') == True:
+                                    self.means.loc[i,name+'_rms'] = rms
+                                if kwargs.pop('max') == True:
+                                    self.means.loc[i,name+'_max'] = maxx
+                                if kwargs.pop('last') == True:
+                                    self.means.loc[i,name+'_last'] = self.df[name].values[-1]
                         else:
                             for ii in range(kwargs['Nouts']):
                                 self.df[f'Res {ii}'] = results['Values'][ii]
@@ -160,7 +164,16 @@ class PyPlecs():
                         self.files['File'] = f"{timenow}-{self.name}-{param_names[0]}-{float(val1.split('*')[0]):.3f}.zip"
                         self.files['Date'] = f"{timenow.split('-')[0]}" # %m.%d-%H.%M
                         self.files['Time'] = f"{timenow.split('-')[1]}" # %m.%d-%H.%M
-                    self.df = pd.DataFrame()
+                        
+                    if 'eval' in kwargs:
+                        row, eq = kwargs.pop('eval')
+                        try:
+                            self.means[row] = self.means.eval(eq)
+                        except:
+                            print('no spaces are allowed')
+                    if kwargs.pop('reset') == True:
+                        self.df = pd.DataFrame()
+                    
                         # 1. save all subsims to csv + svg
                         # 2. find min,max, mean and rms of each result
                         # 3. save only the last values
@@ -182,11 +195,15 @@ class PyPlecs():
                             mean = (self.df.loc[msk,name].mean())
                             maxx = self.df.loc[msk,name].max()
                             rms = (self.df.loc[msk,name].pow(2).sum()/self.df[msk].shape[0])**0.5
-                            
-                            self.means.loc[self.simTotal,name+' mean'] = mean
-                            self.means.loc[self.simTotal,name+' rms'] = rms
-                            self.means.loc[self.simTotal,name+' max'] = maxx
-                            self.means.loc[self.simTotal,name+' last'] = self.df[name].values[-1]
+
+                            if kwargs.pop('mean') == True:
+                                self.means.loc[i,name+'_mean'] = mean
+                            if kwargs.pop('rms') == True:
+                                self.means.loc[i,name+'_rms'] = rms
+                            if kwargs.pop('max') == True:
+                                self.means.loc[i,name+'_max'] = maxx
+                            if kwargs.pop('last') == True:
+                                self.means.loc[i,name+'_last'] = self.df[name].values[-1]
                     else:
                         for i in range(kwargs['Nouts']):
                             self.df[f'Res {i}'] = results['Values'][i]
@@ -204,7 +221,8 @@ class PyPlecs():
                         
                         fig.savefig(f"{timenow}-{self.name}-{param_names[0]}-{val1:.3f}.svg")
                         fig.savefig(f"{timenow}-{self.name}-{param_names[0]}-{val1:.3f}.png",dpi=500)
-                        plt.clf() # do not show the plot
+                        fig.clf() # do not show the plot
+                        plt.close()
                         
                         self.files.loc[self.simTotal,'File'] = f"{timenow}-{self.name}-{param_names[0]}-{val1:.3f}.zip"
                         self.files.loc[self.simTotal,'Date'] = f"{timenow.split('-')[0]}" # %m.%d-%H.%M
@@ -220,7 +238,8 @@ class PyPlecs():
                             
                         fig.savefig(f"{timenow}-{self.name}-{param_names[0]}-{float(val1.split('*')[0]):.3f}.svg")
                         fig.savefig(f"{timenow}-{self.name}-{param_names[0]}-{float(val1.split('*')[0]):.3f}.png",dpi=500)
-                        plt.clf() # do not show the plot
+                        fig.clf() # do not show the plot
+                        plt.close()
                         
                         self.files.loc[self.simTotal,'File'] = f"{timenow}-{self.name}-{param_names[0]}-{float(val1.split('*')[0]):.3f}.zip"
                         self.files.loc[self.simTotal,'Date'] = f"{timenow.split('-')[0]}" # %m.%d-%H.%M
@@ -255,7 +274,7 @@ class PyPlecs():
     def SimOne(self,**kwargs):
         ''' SimTime : float, period : float, outputs : [str], name : str, plot_first : int, scopes : [str], save_csv '''
         # set default input parameters
-        defaultKwargs = { 'SimTime': self.SimTime, 'reset' : False, 'save_csv' : True}
+        defaultKwargs = { 'SimTime': self.SimTime, 'reset' : False, 'save_csv' : True, 'rms' : True, 'max' : True, 'mean' : True, 'last':True}
         kwargs = { **defaultKwargs, **kwargs }
         
         self.SimTime = kwargs['SimTime']
@@ -299,14 +318,18 @@ class PyPlecs():
             maxx = self.df.loc[msk,name].max()
             rms = (self.df.loc[msk,name].pow(2).sum()/self.df[msk].shape[0])**0.5
 
-            self.means.loc[self.simTotal,name+' mean'] = mean
-            self.means.loc[self.simTotal,name+' rms'] = rms
-            self.means.loc[self.simTotal,name+' max'] = maxx
-            self.means.loc[self.simTotal,name+' last'] = self.df[name].values[-1]
-
+            if kwargs['mean'] == True:
+                self.means.loc[self.simTotal,name+'_mean'] = mean
+            if kwargs['rms'] == True:
+                self.means.loc[self.simTotal,name+'_rms'] = rms
+            if kwargs['max'] == True:
+                self.means.loc[self.simTotal,name+'_max'] = maxx
+            if kwargs['last'] == True:
+                self.means.loc[self.simTotal,name+'_last'] = self.df[name].values[-1]
+        
         # save a single simulation into csv
         if kwargs['save_csv'] == True:
-            self.df[msk].to_csv(f"{timenow}-{self.name}.zip",index=False)
+            self.df[msk].to_csv(f"{timenow}-{self.name}_{self.simTotal}.zip",index=False)
 
         # if plot is not given, plot everything
         if 'plot_first' in kwargs:
@@ -322,13 +345,24 @@ class PyPlecs():
 
             for k, name in enumerate(kwargs['outputs']):
                 self.df[msk].plot(ax=p[k],x='t',y=name)
-
-        fig.savefig(f"{timenow}-{self.name}.svg")
-        fig.savefig(f"{timenow}-{self.name}.png",dpi=500)
-        plt.clf() # do not show the plot
+        
+        if 'eval' in kwargs:
+            row, eq = kwargs.pop('eval')
+            try:
+                self.means[row] = self.means.eval(eq)
+            except:
+                print('no spaces are allowed')
+            
+        p[0].set_ylim(-35,35)
+        self.df = pd.DataFrame()
+        fig.savefig(f"{timenow}-{self.name}_{self.simTotal}.svg")
+        fig.savefig(f"{timenow}-{self.name}_{self.simTotal}.png",dpi=500)
+        fig.clf() # do not show the plot
+        plt.close()
+        self.simTotal += 1
+        
     def SaveCSV(self,**kwargs):
         ''' outputs : bool, means : bool, files : bool, timestamp : bool, name : str, period : float '''
-        msk = self.df['t'] > (self.df['t'].values[-1]-kwargs['period']) if 'period' in kwargs else self.df['t'] > 0
         # set default input parameters
         defaultKwargs = { 'outputs': True, 'means' : True, 'files' : True, 'timestamp' : True}
         kwargs = { **defaultKwargs, **kwargs }
@@ -343,6 +377,7 @@ class PyPlecs():
         else:
             timenow = ''
         if kwargs['outputs'] == True:
+            msk = self.df['t'] > (self.df['t'].values[-1]-kwargs['period']) if 'period' in kwargs else self.df['t'] > 0
             self.df[msk].to_csv(f"{timenow}{self.name}.zip",index=False)
         if kwargs['means'] == True:
             self.means.to_csv(f"{timenow}{self.name}-means.csv",index=False)
