@@ -7,7 +7,7 @@ class PyPlecs():
         import matplotlib.pyplot as plt
         
         # set default input parameters
-        defaultKwargs = { 'user': 'TCA1RNG', 'version': 4.8,'localhost':1080, 'path':'C://Anatolii//EMY-050//TCM','SimTime':0.02 }
+        defaultKwargs = { 'user': 'Anatolii', 'version': 4.8,'localhost':1080, 'path':'C://Anatolii//','SimTime':0.02 }
         kwargs = { **defaultKwargs, **kwargs }
         
         # assign to the class variables
