@@ -1,0 +1,158 @@
+import xmlrpc.client as xml
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from loguru import logger
+import os
+
+class SimplePlecs:
+    """ 
+    Python Class for automated simulations of Plecs with PPT saving, CSV saving and  Losses calculation
+    :param str model : Simulation model name
+    :param str user : User name for the installation
+    :param float version : The person sending the message
+    :param int localhost : 
+    :param str path : str 
+    :param float SimTime : str 
+    :param dict params : str
+    """ 
+    def __init__(self,**kwargs)->None:# assign to the class variables
+        defaultKwargs = {'host':1080}
+        kwargs = {**defaultKwargs,**kwargs}
+        
+        self._start_logger()
+        self._plecs_connect(host=kwargs['host'])
+        
+        if 'model' in kwargs:
+            self.addSimFile(kwargs.get('model'))
+        if 'outputs' in kwargs:
+            self.outputs(outputs=kwargs.get('outputs'))
+        
+        if 'params' in kwargs:
+            params = kwargs.get('params')
+            self.addparam(**params)
+        if 'xlim' in kwargs:
+            self._set_xlim(kwargs.get('xlim'))
+        if 'ylims' in kwargs:
+            self._set_ylims(kwargs.get('ylims'))
+        if 'time' in kwargs:
+            self.simTime(kwargs.get('time'))
+            
+        plt.style.use('bmh')
+    def addSimFile(self,model:str)->None:
+        self.model= model
+        logger.info(f"Loading {self.model} file")
+        
+    def simulate(self,**kwargs)->None:
+        
+        if 'outputs' in kwargs:
+            self.set_outputs(kwargs.get('outputs'))
+        if 'xlim' in kwargs:
+            self._set_xlim(kwargs.get('xlim'))
+        if 'ylims' in kwargs:
+            self._set_ylims(kwargs.get('ylims'))
+        if 'time' in kwargs:
+            self.simTime(kwargs.get('time'))
+        logger.info(f"Start simulating {self.model}")
+        results = self.plecs.simulate(self.model)
+        self.results = {'t':results["Time"]} #*** ADD DEFAULT
+        logger.info(f"Finished simulation")
+        for i,name in enumerate(self.outputs):
+            self.results[name] = results["Values"][i]
+        logger.info(f"Finished fetching data")
+        self.plot(self.results,self.structure)
+    def _set_xlim(self,xlim):
+        self.xlim = xlim
+    def _set_ylims(self,ylims):
+        self.ylims = ylims
+    def xylims(self,xlim,ylims):
+        self._set_xlim(xlim)
+        self._set_ylims(ylims)
+    def plot(self,results,structure,**kwargs)->None:
+        N_plots = len(structure)
+        fig,p = plt.subplots(N_plots,sharex=True)
+        fig.set_figheight(3*N_plots)
+        
+        for i,plots in enumerate(self.structure):
+            if plots > 1:
+                [p[i].plot(self.results['t'],self.results[self.outputs[i+j]],color=f"C{j}",label=self.outputs[i+j]) for j in range(plots)]
+            else:
+                p[i].plot(self.results['t'],self.results[self.outputs[i]],color=f"C{i}",label=self.outputs[i])
+            p[i].legend(loc='upper right')
+            if self.ylims != None:
+                p[i].set_ylim(self.ylims[i])
+        if self.xlim != None:
+            p[-1].set_xlim(self.xlim)
+    def set_outputs(self,outputs:list) -> None:
+        """
+        Set up plecs output values
+        Parameters
+        ----------
+        outputs->list
+            DESCRIPTION.
+
+        Returns
+        -------
+        self.outputs
+        self.structure
+        """
+        # assign outputs to the class property
+        self.outputs = []
+        # assign the size of the list to the size variable
+        size = len(outputs)
+        # create a class property defining the structure
+        self.structure = [0]*size
+        
+        for i,value in enumerate(outputs):
+            if isinstance(value,list):
+                self.structure[i] = len(value)
+                self.outputs += value
+            else:
+                self.structure[i] = 1
+                self.outputs.append(value)
+        logger.info(f"{self.outputs} configured as plecs outputs")
+    def _start_logger(self):
+        """
+        Start loguru logger
+        """
+        logger.add(sink='PyPlecs',level='DEBUG')
+        logger.info("====================================================================================================")
+        
+    def _plecs_connect(self,host:int)->None:
+        """
+        Connect to Plecs RPC server using
+        host : integer. The default is 1080.
+        """
+        try:
+            self.plecs = xml.Server(f'http://localhost:{host}/RPC2').plecs
+            logger.info(f"Connected to the localhost:{host}")
+        except:
+            logger.error(f"Could not connect to the localhost:{host}")
+    def reset_params(self):
+        # reset the parameters before updating them
+        init = self.plecs.get(self.model,'InitializationCommands')
+        self.plecs.set(self.model,'InitializationCommands',init+'\n')
+        # write new parameters
+        for key,val in self.params.items():
+            init += f'{key} = {val};\n'
+        self.plecs.set(self.model,'InitializationCommands',init)
+    def addparam(self, **kwargs):
+        init = self.plecs.get(self.model,'InitializationCommands')+'\n'
+        for key,val in kwargs.items():
+            init += f'{key} = {val};\n'
+        self.plecs.set(self.model,'InitializationCommands',init)
+    def simTime(self,time):
+        self.plecs.set(self.model,'TimeSpan',f"{time}")
+        logger.info(f"Simulation time changed to {time}")
+    def _defaults(self):
+        self.xlim = None
+        self.ylims = None
+        self.reset_params()
+        
+if __name__ == "__main__":
+    test = SimplePlecs(model='test_simulation',params={'boost':'100e3-6','fsw':'170e3'})
+    
+    # test.addSimFile(model='test_simulation')
+    # test.addparam(L='205e-6')
+    test.xylims(xlim=[0.02,0.12],ylims=[[0,600],[-50,50],[-60,60],[-60,60]])
+    test.simulate(outputs = ['Vdc','Idc','Iac',['IHS','ILS']], time = 0.12)
